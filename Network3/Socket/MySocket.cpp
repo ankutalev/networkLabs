@@ -1,4 +1,3 @@
-
 #include <stdexcept>
 #include <cstring>
 #include <unistd.h>
@@ -11,13 +10,18 @@ MySocket::MySocket(int port) : MySocket(port, DEFAULT_IP_ADDR) {
 }
 
 MySocket::MySocket(int port, std::string_view ipaddr) {
+#ifdef linux
+    isLinux = true;
+#else
+    isLinux = false;
+#endif
     this->port = port;
     this->ipAddress = ipaddr;
+    inet_pton()
     addr.sin_addr.s_addr = inet_addr(ipAddress.c_str());
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
     std::fill(buffer, buffer + DEFAULT_BUFFER_SIZE, 0);
-
 }
 
 MySocket::MySocket(std::string_view ipaddr) : MySocket(DEFAULT_PORT, ipaddr) {}

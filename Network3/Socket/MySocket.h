@@ -1,10 +1,14 @@
 #pragma once
-
 #include <string_view>
 #include <string>
-#include<sys/socket.h>    //nodeSocket
-#include<arpa/inet.h>    //inet_addr
 
+#ifdef linux
+    #include<sys/socket.h>    //nodeSocket
+    #include<arpa/inet.h>    //inet_addr
+#else
+    #include <ws2tcpip.h>
+    #include <winsock2.h>
+#endif
 class MySocket {
 public:
     explicit MySocket(int port);  // localhost
@@ -36,6 +40,7 @@ private:
     struct sockaddr_in addr;
     int descryptor = -1;
     std::string ipAddress = DEFAULT_IP_ADDR;
+    bool isLinux = true;
 };
 
 
