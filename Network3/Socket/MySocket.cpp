@@ -139,7 +139,6 @@ bool MySocket::joinMulticastGroup(std::string_view grAddr) {
         mreq.imr_interface.s_addr = htonl(INADDR_ANY);
     }
     else {
-        std::cout << inet_pton(protocol, grAddr.data(), &group.ipv6mr_multiaddr) << std::endl;
         group.ipv6mr_interface = htonl(INADDR_ANY);
     }
 
