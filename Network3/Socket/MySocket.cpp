@@ -14,17 +14,12 @@ MySocket::MySocket(int port, std::string_view ipaddr) {
     this->port = port;
     this->ipAddress = ipaddr;
 
-    char tmpIpAddrBuffer[IPV6_ADDR_SIZE_IN_CHAR];
-    std::fill(tmpIpAddrBuffer, tmpIpAddrBuffer + IPV6_ADDR_SIZE_IN_CHAR, 0);
-
-
-    if (!inet_pton(AF_INET, ipAddress.c_str(), tmpIpAddrBuffer)) {
+    if (!inet_pton(AF_INET, ipAddress.c_str(), &addr.sin_addr.s_addr)) {
         protocol = AF_INET6;
-        if (!inet_pton(AF_INET6, ipAddress.c_str(), tmpIpAddrBuffer))
+        if (!inet_pton(AF_INET6, ipAddress.c_str(), &addr.sin_addr.s_addr))
             throw std::logic_error("Not IPv4 or IPv6 address!");
     }
 
-    //addr.sin_addr.s_addr = inet_addr(ipAddress.c_str());
     inet_pton(protocol, ipAddress.c_str(), &addr.sin_addr);
     addr.sin_family = protocol;
     addr.sin_port = htons(port);
@@ -88,9 +83,6 @@ void MySocket::open() {
 }
 
 void MySocket::bind() {
-#ifndef linux
-    addr.sin_addr.s_addr = INADDR_ANY;
-#endif
     if (::bind(descryptor, (sockaddr*) &addr, sizeof(addr))) {
         std::string errorMsg = "Can't bind! nodeSocket!" + std::string(strerror(errno)) + "\n";
         throw std::runtime_error(errorMsg);
@@ -99,21 +91,37 @@ void MySocket::bind() {
 
 
 std::string MySocket::ipaddrAndPort() const {
+    inet_ntop(protocol, (void *) &addr.sin_addr, (char *) info, IPV6_ADDR_SIZE_IN_CHAR);
+#ifndef linux
     inet_ntop(protocol, (void*) &addr.sin_addr, (PSTR) info, IPV6_ADDR_SIZE_IN_CHAR);
+#endif
     return std::string(info) + std::string(":/") + std::to_string(port);
 }
 std::string MySocket::getIpAddr() const {
+#ifndef linux
     inet_ntop(protocol, (void*) &addr.sin_addr, (PSTR) info, IPV6_ADDR_SIZE_IN_CHAR);
+#else
+    inet_ntop(protocol, (void *) &addr.sin_addr, (char *) info, IPV6_ADDR_SIZE_IN_CHAR);
+#endif
     return info;
 }
 
 bool MySocket::joinMulticastGroup(std::string_view grAddr) {
+//#ifndef linux
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);//todo does it work windows?
+//#endif
+
+    this->bind();
+
+
     struct ip_mreq mreq;
-    mreq.imr_multiaddr.s_addr = inet_addr(grAddr.data());
+    inet_pton(protocol, grAddr.data(), &mreq.imr_multiaddr.s_addr);
+
     int opt = 0;
-    mreq.imr_interface.s_addr = INADDR_ANY;
+    mreq.imr_interface.s_addr = htonl(INADDR_ANY); //todo is it valid on widows?
     if (protocol == AF_INET) {
-        return !setsockopt(descryptor, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*) &mreq, sizeof(mreq)) ? !setsockopt(
+        return !setsockopt(descryptor, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *) &mreq, sizeof(mreq))
+               ? !setsockopt(
             descryptor,
             IPPROTO_IP,
             IP_MULTICAST_LOOP,
@@ -122,11 +130,11 @@ bool MySocket::joinMulticastGroup(std::string_view grAddr) {
     }
     else {
         return !setsockopt(descryptor, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP, (char*) &mreq, sizeof(mreq)) ? !setsockopt(
-            descryptor,
-            IPPROTO_IPV6,
-            IPV6_MULTICAST_LOOP,
-            (char*) &opt,
-            sizeof(opt)) : false;;
+                descryptor,
+                IPPROTO_IPV6,
+                IPV6_MULTICAST_LOOP,
+                (char*) &opt,
+                sizeof(opt)) : false;
     }
 }
 

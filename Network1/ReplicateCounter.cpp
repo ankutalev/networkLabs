@@ -1,8 +1,12 @@
 #include <iostream>
+#include <thread>
 #include "ReplicateCounter.h"
 
-
-ReplicateCounter::ReplicateCounter(std::string_view mltcAddr) : grAddr(mltcAddr), groupSocket(mltcAddr) {}
+ReplicateCounter::ReplicateCounter(std::string_view mltcAddr) : grAddr(mltcAddr), groupSocket(mltcAddr) {
+#ifdef linux
+    socket = MySocket(mltcAddr);
+#endif
+}
 
 void ReplicateCounter::aliveChecker() {
     while (1) {
@@ -26,10 +30,8 @@ void ReplicateCounter::aliveChecker() {
 }
 void ReplicateCounter::startWorking() {
     socket.open();
-    socket.bind();
     socket.setRecvTimeOut(SENDING_INTERVAL);
-    socket.joinMulticastGroup(groupSocket.getIpAddr());
-
+    socket.joinMulticastGroup(grAddr);
     std::thread checker(&ReplicateCounter::aliveChecker, this);
     checker.detach();
     while (1) {
