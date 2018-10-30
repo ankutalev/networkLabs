@@ -18,12 +18,13 @@ public:
     ~MySocket();
     bool write(const MySocket &sock, std::string_view msg);
     bool joinMulticastGroup(std::string_view grAddr);
+    bool setRecvTimeOut(int seconds);
     void open();
-
     void bind();
 
+    bool setIpAddr(std::string_view addr);
     std::string ipaddrAndPort() const;
-
+    std::string getIpAddr() const;
     std::string read(const MySocket &sock);
 
     bool operator<(const MySocket &rhs) const {

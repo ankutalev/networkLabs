@@ -24,7 +24,8 @@ MySocket::MySocket(int port, std::string_view ipaddr) {
             throw std::logic_error("Not IPv4 or IPv6 address!");
     }
 
-    addr.sin_addr.s_addr = inet_addr(ipAddress.c_str());
+    //addr.sin_addr.s_addr = inet_addr(ipAddress.c_str());
+    inet_pton(protocol, ipAddress.c_str(), &addr.sin_addr);
     addr.sin_family = protocol;
     addr.sin_port = htons(port);
     std::fill(buffer, buffer + DEFAULT_BUFFER_SIZE, 0);
@@ -68,7 +69,11 @@ std::string MySocket::read(const MySocket &sock) {
         msg += buffer;
     } while (readed == DEFAULT_BUFFER_SIZE);
     if (readed == -1) {
-        perror("Can't read from socket\n");
+#ifdef linux
+        //perror("Can't read from socket\n");
+#else
+        //std::cerr<<"Can't read from socket : wsagetlasterror"<<WSAGetLastError()<<std::endl;
+#endif
         throw std::runtime_error("Read from nodeSocket failed!\n");
     }
     return msg;
@@ -83,7 +88,9 @@ void MySocket::open() {
 }
 
 void MySocket::bind() {
+#ifndef linux
     addr.sin_addr.s_addr = INADDR_ANY;
+#endif
     if (::bind(descryptor, (sockaddr*) &addr, sizeof(addr))) {
         std::string errorMsg = "Can't bind! nodeSocket!" + std::string(strerror(errno)) + "\n";
         throw std::runtime_error(errorMsg);
@@ -95,12 +102,42 @@ std::string MySocket::ipaddrAndPort() const {
     inet_ntop(protocol, (void*) &addr.sin_addr, (PSTR) info, IPV6_ADDR_SIZE_IN_CHAR);
     return std::string(info) + std::string(":/") + std::to_string(port);
 }
+std::string MySocket::getIpAddr() const {
+    inet_ntop(protocol, (void*) &addr.sin_addr, (PSTR) info, IPV6_ADDR_SIZE_IN_CHAR);
+    return info;
+}
+
 bool MySocket::joinMulticastGroup(std::string_view grAddr) {
     struct ip_mreq mreq;
     mreq.imr_multiaddr.s_addr = inet_addr(grAddr.data());
+    int opt = 0;
     mreq.imr_interface.s_addr = INADDR_ANY;
-    if (protocol == AF_INET)
-        return !setsockopt(descryptor, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*) &mreq, sizeof(mreq));
-    else
-        return !setsockopt(descryptor, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP, (char*) &mreq, sizeof(mreq));
+    if (protocol == AF_INET) {
+        return !setsockopt(descryptor, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*) &mreq, sizeof(mreq)) ? !setsockopt(
+            descryptor,
+            IPPROTO_IP,
+            IP_MULTICAST_LOOP,
+            (char*) &opt,
+            sizeof(opt)) : false;
+    }
+    else {
+        return !setsockopt(descryptor, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP, (char*) &mreq, sizeof(mreq)) ? !setsockopt(
+            descryptor,
+            IPPROTO_IPV6,
+            IPV6_MULTICAST_LOOP,
+            (char*) &opt,
+            sizeof(opt)) : false;;
+    }
+}
+
+bool MySocket::setRecvTimeOut(int seconds) {
+    struct timeval timeout;
+    timeout.tv_sec = seconds;
+    timeout.tv_usec = 0;
+    return (setsockopt(descryptor, SOL_SOCKET, SO_RCVTIMEO, (char*) &timeout, sizeof(timeout)) < 0);
+}
+
+bool MySocket::setIpAddr(std::string_view adr) {
+    ipAddress = adr;
+    return inet_pton(protocol, ipAddress.c_str(), &addr.sin_addr) == 1;
 }
