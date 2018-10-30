@@ -5,7 +5,6 @@
 
 int main(int argc, char* argv[]) {
     std::cout << "Hello, World!" << std::endl;
-    InetPton();
     const int port = 5284;
     WSAData wsaData;
     WSAStartup(MAKEWORD(2,2),&wsaData);

@@ -1,7 +1,7 @@
 #include <iostream>
 #include <winsock2.h>
 #include <ws2tcpip.h>
-//#include <inaddr.h>
+#include <inaddr.h>
 
 
 int main(int argc, char* argv[]) {
@@ -49,6 +49,7 @@ int main(int argc, char* argv[]) {
     std::string heh = "heha";
     std::cout<<WSAGetLastError()<<"\n";
     char buf [100500];
+    std::fill(buf, buf+100500,0);
     socklen_t from = sizeof(fromAddr);
 //std::cout<<recvfrom(sockfd, buf, 100500, 0, (struct sockaddr*) &addr, &from)<<"\n";
 while (1) {
