@@ -1,27 +1,38 @@
 #include <stdexcept>
 #include <cstring>
+
+#ifdef linux
 #include <unistd.h>
+#endif
 #include "MySocket.h"
 #include <algorithm>
 #include <iostream>
 
-MySocket::MySocket(int port) : MySocket(port, DEFAULT_IP_ADDR) {
-
-}
+MySocket::MySocket(int port) : MySocket(port, DEFAULT_IP_ADDR) {}
 
 MySocket::MySocket(int port, std::string_view ipaddr) {
-#ifdef linux
-    isLinux = true;
-#else
-    isLinux = false;
-#endif
     this->port = port;
     this->ipAddress = ipaddr;
-    inet_pton()
+
+    char tmpIpAddrBuffer[IPV6_ADDR_SIZE_IN_CHAR];
+    std::fill(tmpIpAddrBuffer, tmpIpAddrBuffer + IPV6_ADDR_SIZE_IN_CHAR, 0);
+
+
+    if (!inet_pton(AF_INET, ipAddress.c_str(), tmpIpAddrBuffer)) {
+        protocol = AF_INET6;
+        if (!inet_pton(AF_INET6, ipAddress.c_str(), tmpIpAddrBuffer))
+            throw std::logic_error("Not IPv4 or IPv6 address!");
+    }
+
     addr.sin_addr.s_addr = inet_addr(ipAddress.c_str());
-    addr.sin_family = AF_INET;
+    addr.sin_family = protocol;
     addr.sin_port = htons(port);
     std::fill(buffer, buffer + DEFAULT_BUFFER_SIZE, 0);
+    std::fill(info, info + IPV6_ADDR_SIZE_IN_CHAR, 0);
+#ifndef linux
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
+#endif
+
 }
 
 MySocket::MySocket(std::string_view ipaddr) : MySocket(DEFAULT_PORT, ipaddr) {}
@@ -29,7 +40,13 @@ MySocket::MySocket(std::string_view ipaddr) : MySocket(DEFAULT_PORT, ipaddr) {}
 MySocket::MySocket() : MySocket(DEFAULT_PORT, DEFAULT_IP_ADDR) {}
 
 MySocket::~MySocket() {
+#ifdef linux
     close(descryptor);
+#else
+    closesocket(descryptor);
+    WSACleanup();
+#endif
+
 }
 
 bool MySocket::write(const MySocket &sock, std::string_view msg) {
@@ -44,21 +61,21 @@ std::string MySocket::read(const MySocket &sock) {
     auto size = sizeof(sock.addr);
     long long readed = 0;
     std::string msg;
-    std::fill(buffer, buffer + DEFAULT_BUFFER_SIZE, 0);
     do {
-        std::fill(buffer, buffer + readed, 0);
         readed = recvfrom(descryptor, buffer, DEFAULT_BUFFER_SIZE, 0, (sockaddr *) &sock.addr, (socklen_t *) &size);
+        if (readed != -1)
+            buffer[readed] = '\0';
         msg += buffer;
     } while (readed == DEFAULT_BUFFER_SIZE);
     if (readed == -1) {
-        perror("huy\n");
+        perror("Can't read from socket\n");
         throw std::runtime_error("Read from nodeSocket failed!\n");
     }
     return msg;
 }
 
 void MySocket::open() {
-    descryptor = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    descryptor = socket(protocol, SOCK_DGRAM, IPPROTO_UDP);
     if (descryptor == -1) {
         std::string errorMsg = "Can't create nodeSocket!" + std::string(strerror(errno)) + "\n";
         throw std::runtime_error(errorMsg);
@@ -66,12 +83,24 @@ void MySocket::open() {
 }
 
 void MySocket::bind() {
-    if (::bind(descryptor, (sockaddr *) &addr, sizeof(addr))) {
+    addr.sin_addr.s_addr = INADDR_ANY;
+    if (::bind(descryptor, (sockaddr*) &addr, sizeof(addr))) {
         std::string errorMsg = "Can't bind! nodeSocket!" + std::string(strerror(errno)) + "\n";
         throw std::runtime_error(errorMsg);
     }
 }
 
+
 std::string MySocket::ipaddrAndPort() const {
-    return ipAddress + std::to_string(addr.sin_port);
+    inet_ntop(protocol, (void*) &addr.sin_addr, (PSTR) info, IPV6_ADDR_SIZE_IN_CHAR);
+    return std::string(info) + std::string(":/") + std::to_string(port);
+}
+bool MySocket::joinMulticastGroup(std::string_view grAddr) {
+    struct ip_mreq mreq;
+    mreq.imr_multiaddr.s_addr = inet_addr(grAddr.data());
+    mreq.imr_interface.s_addr = INADDR_ANY;
+    if (protocol == AF_INET)
+        return !setsockopt(descryptor, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*) &mreq, sizeof(mreq));
+    else
+        return !setsockopt(descryptor, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP, (char*) &mreq, sizeof(mreq));
 }

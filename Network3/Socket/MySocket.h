@@ -16,9 +16,8 @@ public:
     MySocket(int port, std::string_view ipaddr); // custom ip and port
     explicit MySocket(std::string_view ipaddr); // custom ip on default port
     ~MySocket();
-
     bool write(const MySocket &sock, std::string_view msg);
-
+    bool joinMulticastGroup(std::string_view grAddr);
     void open();
 
     void bind();
@@ -34,13 +33,18 @@ public:
 private:
     static const int DEFAULT_PORT = 528491;
     static const int DEFAULT_BUFFER_SIZE = 4096;
+    static const int IPV6_ADDR_SIZE_IN_CHAR = 50;
     constexpr static const char DEFAULT_IP_ADDR[] = "127.0.0.1";
     int port = 0;
     char buffer[DEFAULT_BUFFER_SIZE] = {0};
     struct sockaddr_in addr;
     int descryptor = -1;
     std::string ipAddress = DEFAULT_IP_ADDR;
-    bool isLinux = true;
+    int protocol = AF_INET;
+    char info[IPV6_ADDR_SIZE_IN_CHAR];
+#ifndef linux
+    WSAData wsaData;
+#endif
 };
 
 
