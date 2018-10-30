@@ -107,9 +107,7 @@ std::string MySocket::getIpAddr() const {
 }
 
 bool MySocket::joinMulticastGroup(std::string_view grAddr) {
-//#ifndef linux
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);//todo does it work windows?
-//#endif
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
     this->bind();
 
@@ -118,7 +116,7 @@ bool MySocket::joinMulticastGroup(std::string_view grAddr) {
     inet_pton(protocol, grAddr.data(), &mreq.imr_multiaddr.s_addr);
 
     int opt = 0;
-    mreq.imr_interface.s_addr = htonl(INADDR_ANY); //todo is it valid on widows?
+    mreq.imr_interface.s_addr = htonl(INADDR_ANY);
     if (protocol == AF_INET) {
         return !setsockopt(descryptor, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char *) &mreq, sizeof(mreq))
                ? !setsockopt(
