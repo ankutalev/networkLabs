@@ -3,11 +3,14 @@
 
 #ifdef linux
 #include <unistd.h>
+
+#else
+#include <in6addr.h>
 #endif
 #include "MySocket.h"
 #include <algorithm>
 #include <iostream>
-#include <in6addr.h>
+
 
 MySocket::MySocket(int port) : MySocket(port, DEFAULT_IP_ADDR) {}
 
@@ -123,18 +126,18 @@ std::string MySocket::getIpAddr() const {
 }
 
 bool MySocket::joinMulticastGroup(std::string_view grAddr) {
+//#ifndef linux
     if (protocol == AF_INET)
         addrIPv4.sin_addr.s_addr = htonl(INADDR_ANY);
     else
         addrIPv6.sin6_addr = in6addr_any;
-
+//#endif
 
     this->bind();
 
     struct ip_mreq mreq;
     struct ipv6_mreq group;
     if (protocol == AF_INET) {
-
         inet_pton(protocol, grAddr.data(), &mreq.imr_multiaddr.s_addr);
         mreq.imr_interface.s_addr = htonl(INADDR_ANY);
     }

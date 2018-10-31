@@ -4,9 +4,6 @@
 
 ReplicateCounter::ReplicateCounter(std::string_view lcl, std::string_view mltcAddr) : grAddr(mltcAddr),
     groupSocket(mltcAddr), socket(lcl) {
-#ifdef linux
-    socket = MySocket(mltcAddr);
-#endif
 }
 
 void ReplicateCounter::aliveChecker() {
