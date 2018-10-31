@@ -46,19 +46,17 @@ int main(int argc , char *argv[]) {
 
     struct stat st;
     stat(argv[1], &st);
-    std::string message(filePath);
-    auto fileSize = std::to_string(st.st_size);
-    fileSize += " ";
-    fileSize += "LOLKEK ";
-    message += fileSize;
-
+    std::string message(argv[1]);
+    auto fileSize = std::to_string(st.st_size) + " " + "LOLKEK ";
+    message = message + " " + fileSize;
+    std::cout << message << std::endl;
     if (send(sock, message.c_str(), message.size(), 0) < 0) {
         std::cerr << "Send failed" << std::endl;
         return -1;
     }
 
-    std::cout << recv(sock, serverReply, SERVER_REPLY_BUFFER_SIZE, 0);
-    std::cout << serverReply;
+    recv(sock, serverReply, SERVER_REPLY_BUFFER_SIZE, 0);
+    std::cout << serverReply << std::endl;
 
     FILE* fin = fopen("heh.txt","r");
     size_t readed = SERVER_REPLY_BUFFER_SIZE;
