@@ -38,7 +38,8 @@ private:
     constexpr static const char DEFAULT_IP_ADDR[] = "127.0.0.1";
     int port = 0;
     char buffer[DEFAULT_BUFFER_SIZE] = {0};
-    struct sockaddr_in addr;
+    struct sockaddr_in addrIPv4;
+    struct sockaddr_in6 addrIPv6;
     int descryptor = -1;
     std::string ipAddress = DEFAULT_IP_ADDR;
     int protocol = AF_INET;

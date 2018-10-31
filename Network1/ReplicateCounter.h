@@ -7,7 +7,7 @@
 
 class ReplicateCounter {
 public:
-    explicit ReplicateCounter(std::string_view mltcAddr);
+    explicit ReplicateCounter(std::string_view lcl, std::string_view mltcAddr);
     void startWorking();
 private:
     void aliveChecker();

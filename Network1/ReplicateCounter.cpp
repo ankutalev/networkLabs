@@ -2,7 +2,8 @@
 #include <thread>
 #include "ReplicateCounter.h"
 
-ReplicateCounter::ReplicateCounter(std::string_view mltcAddr) : grAddr(mltcAddr), groupSocket(mltcAddr) {
+ReplicateCounter::ReplicateCounter(std::string_view lcl, std::string_view mltcAddr) : grAddr(mltcAddr),
+    groupSocket(mltcAddr), socket(lcl) {
 #ifdef linux
     socket = MySocket(mltcAddr);
 #endif
@@ -34,6 +35,7 @@ void ReplicateCounter::startWorking() {
     socket.joinMulticastGroup(grAddr);
     std::thread checker(&ReplicateCounter::aliveChecker, this);
     checker.detach();
+
     while (1) {
         socket.write(groupSocket, "LOLKEK");
         try {
