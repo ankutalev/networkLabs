@@ -24,13 +24,13 @@ public:
 private:
     void registerDescryptorForPollRead(int desc, sockaddr_in *addr, bool isClient);
 
-    void registerDescryptorForPollWrite(int desc);
+    void registerDescryptorForPollWrite(pollfd *desc);
 
     void registerDescryptorForDeleteFromPoll(int desc);
 
-    void readData(int from);
+    void readData(pollfd *from);
 
-    void sendData(int to);
+    void sendData(pollfd *to);
 
     void acceptConnection(int *newClient);
 
@@ -43,6 +43,8 @@ private:
     void removeFromPoll();
 
     bool isAvailableDescryptor(int desc);
+
+    void reBase();
 
 private:
     static const int MAX_CLIENTS = 1024;
@@ -58,8 +60,7 @@ private:
     sockaddr_in forwarderInfo;
     std::string targetPath = "fit.ippolitov.me";
     std::vector<pollfd> pollDescryptors;
-    std::unordered_map<int, pollfd *> descryptorsID;
-    std::unordered_map<int, int> transferPipes;
-    std::unordered_map<int, std::vector<char> > dataPieces;
-    std::set<int> brokenDescryptors;
+    std::unordered_map<pollfd *, pollfd *> transferPipes;
+    std::unordered_map<pollfd *, std::vector<char> > dataPieces;
+    std::set<pollfd *> brokenDescryptors;
 };

@@ -12,22 +12,7 @@ void Forwarder::acceptConnection(int *connect) {
     fcntl(*connect, F_SETFL, fcntl(*connect, F_GETFL, 0) | O_NONBLOCK);
     //after connectToTarget() call this->targetSocket updated
 
-    if (dataPieces.count(*connect) or transferPipes.count(*connect)) {
-        std::cout << "GOT YOU!!!" << std::endl;
-        for (const auto &transferPipe : transferPipes) {
-            if (transferPipe.second == *connect) {
-                sendData(transferPipe.first);
-                close(transferPipe.first);
-                transferPipes.erase(transferPipe.first);
-                for (auto it = pollDescryptors.begin();; ++it) {
-                    if (it->fd == transferPipe.first) {
-                        pollDescryptors.erase(it);
-                        break;
-                    }
-                }
-            }
-        }
-    }
+
 
     if (!connectToTarget()) {
         close(*connect);
@@ -71,8 +56,7 @@ Forwarder::Forwarder(int myPort, std::string_view targetName, int tPort) : targe
     me.fd = mySocket;
     me.events = POLLIN;
     pollDescryptors.emplace_back(me);
-    descryptorsID[nextId] = &pollDescryptors[0];
-    nextId++;
+    pollDescryptors.reserve(MAX_CLIENTS);
 
     addrinfo hints = {0};
     hints.ai_flags = 0;
@@ -102,9 +86,13 @@ void Forwarder::startListen() {
 
 void Forwarder::pollManage() {
 
+    pollfd c;
+    c.fd = -1;
+    c.events = POLLIN;
+
     std::cout << std::endl << std::endl << "BEFORE POLL" << std::endl << std::endl;
     for (const auto &descryptor : pollDescryptors) {
-        std::cout << descryptor.fd << " events" << descryptor.events << " revents" << descryptor.revents << std::endl;
+        std::cout << &descryptor << " events" << descryptor.events << " revents" << descryptor.revents << std::endl;
     }
     std::cout << "AND TRANSFER MAP IS " << std::endl;
     for (const auto &item : transferPipes) {
@@ -126,37 +114,32 @@ void Forwarder::pollManage() {
 
     std::cout << std::endl << std::endl << "AFTER POLL" << std::endl << std::endl;
     for (const auto &descryptor : pollDescryptors) {
-        std::cout << descryptor.fd << " events" << descryptor.events << " revents" << descryptor.revents << std::endl;
+        std::cout << &descryptor << " events" << descryptor.events << " revents" << descryptor.revents << std::endl;
     }
 
     for (auto it = pollDescryptors.begin(); it != pollDescryptors.end(); ++it) {
         int newClient = -1;
         std::cout << "ITERATOR TAKOY" << it->fd << std::endl;
         if (it->revents & POLLOUT) {
-            sendData(it->fd);
+            sendData(&*it);
         } else if (it->revents & POLLIN) {
             if (it->fd == mySocket) {
-                acceptConnection(&newClient);
+                acceptConnection(&c.fd);
             } else {
-                readData(it->fd);
+                readData(&*it);
             }
-        }
-        if (newClient != -1) {
-            pollfd c;
-            c.fd = targetSocket;
-            c.events = POLLIN;
-            it = pollDescryptors.insert(pollDescryptors.end() - 1, c);
-            c.fd = newClient;
-            it = pollDescryptors.insert(pollDescryptors.end() - 1, c);
-            transferPipes[newClient] = targetSocket;
-            transferPipes[targetSocket] = newClient;
-            ++it;
-            continue;
         }
     }
 
     removeFromPoll();
 
+    if (c.fd != -1) {
+        pollDescryptors.push_back(c);
+        c.fd = targetSocket;
+        pollDescryptors.push_back(c);
+        transferPipes[&*(pollDescryptors.end() - 1)] = &*(pollDescryptors.end() - 2);
+        transferPipes[&*(pollDescryptors.end() - 2)] = &*(pollDescryptors.end() - 1);
+    }
 }
 
 
@@ -183,97 +166,84 @@ bool Forwarder::connectToTarget() {
 }
 
 
-void Forwarder::readData(int from) {
-    if (!isAvailableDescryptor(from)) {
-        return;
-    }
-    int to = transferPipes[from];
+void Forwarder::readData(pollfd *idDesc) {
 
+    pollfd *to = transferPipes[idDesc];
 
     while (1) {
-        auto readed = recv(from, buff, BUFFER_SIZE - 1, 0);
+        auto readed = recv(idDesc->fd, buff, BUFFER_SIZE - 1, 0);
         buff[readed] = 0;
-        std::cout << readed << "from " << from << std::endl;
+        std::cout << readed << "idDesc " << idDesc << std::endl;
         if (!readed) {
-            if (from == 4) {
-                std::cout << "SDOH PERVIY SOCKET!!!!" << std::endl;
-            }
-            std::cout << "REGAU " << from << std::endl;
+            std::cout << "REGAU " << idDesc->fd << std::endl;
             registerDescryptorForPollWrite(to);
-            brokenDescryptors.insert(from);
+            brokenDescryptors.insert(idDesc);
             return;
         }
         if (errno == EWOULDBLOCK) {
             errno = EXIT_SUCCESS;
-            std::cout << " AND RAZMER SCHITANNOY DATA is " << dataPieces[from].size() << std::endl;
+            std::cout << " AND RAZMER SCHITANNOY DATA is " << dataPieces[idDesc].size() << std::endl;
             registerDescryptorForPollWrite(to);
             return;
         }
         for (int i = 0; i < readed; ++i) {
-            dataPieces[from].emplace_back(buff[i]);
+            dataPieces[idDesc].emplace_back(buff[i]);
         }
     }
 
 }
 
-void Forwarder::sendData(int to) {
-    int from = transferPipes[to];
-    if (!dataPieces.count(from)) {
-        return;
-    }
+void Forwarder::sendData(pollfd *idDesc) {
+    pollfd *from = transferPipes[idDesc];
     ssize_t sended = 0;
     auto size = dataPieces[from].size();
+
     do {
-        sended = send(to, dataPieces[from].data(), dataPieces[from].size(), 0);
+        sended = send(idDesc->fd, dataPieces[from].data(), dataPieces[from].size(), 0);
         std::cout << "RAZMER DATY IS " << dataPieces[from].size() << std::endl;
-        std::cout << "SENDED IS" << sended;
-//        std::cout << "DO ERAZE " << std::endl << dataPieces[from].data() << std::endl;
+        std::cout << "SENDED IS " << sended << std::endl;
         dataPieces[from].erase(dataPieces[from].begin(), dataPieces[from].begin() + sended);
     } while (sended > 0);
 
 
-//    std::cout << "POSLE ERAZE" << std::endl << dataPieces[from].data() << std::endl;
-    std::cout << "i wrote this to " << to << std::endl;
+    std::cout << "i wrote this idDesc " << idDesc << std::endl;
 
     dataPieces.erase(from);
     for (auto it = pollDescryptors.begin(); it != pollDescryptors.end();) {
-        if (it->fd == to) {
+        if (&*it == idDesc) {
             it->events ^= POLLOUT;
             return;
         } else ++it;
     }
-//    perror("wah");
-//    if (to != 5)
-//        exit(4);
 }
 
-void Forwarder::registerDescryptorForPollRead(int desc, sockaddr_in *addr, bool isClient) {
+//void Forwarder::registerDescryptorForPollRead(int desc, sockaddr_in *addr, bool isClient) {
+//
+//    pollfd c;
+//    c.fd = desc;
+//    c.events = POLLIN;
+//    pollDescryptors.emplace_back(c);
+//
+//    if (isClient) {
+//        transferPipes[targetSocket] = c.fd;
+//        transferPipes[c.fd] = targetSocket;
+//    }
+//
+//
+//}
 
-    pollfd c;
-    c.fd = desc;
-    c.events = POLLIN;
-    pollDescryptors.emplace_back(c);
-
-    if (isClient) {
-        transferPipes[targetSocket] = c.fd;
-        transferPipes[c.fd] = targetSocket;
-    }
-
-
-}
-
-void Forwarder::unregDescryptorForReadFromPoll(int des) {
+void Forwarder::unregDescryptorForReadFromPoll(int idDesc) {
     for (auto it = pollDescryptors.begin(); it != pollDescryptors.end();) {
-        if (it->fd == des) {
+        if (it->fd == idDesc) {
             it->events ^= POLLIN;
             return;
         } else ++it;
     }
 }
 
-void Forwarder::registerDescryptorForPollWrite(int desc) {
+void Forwarder::registerDescryptorForPollWrite(pollfd *idDesc) {
     for (auto it = pollDescryptors.begin(); it != pollDescryptors.end();) {
-        if (it->fd == desc) {
+        if (&*it == idDesc) {
             it->events |= POLLOUT;
             return;
         } else ++it;
@@ -290,22 +260,19 @@ void Forwarder::removeFromPoll() {
     }
 
     for (auto it = pollDescryptors.begin(); it != pollDescryptors.end();) {
-        if (brokenDescryptors.count(it->fd)) {
+        if (brokenDescryptors.count(&*it) and it->fd > 0) {
             close(it->fd);
             std::cout << "CLOSE this! " << it->fd << std::endl;
-            int target = transferPipes[it->fd];
-            if (!target)
-                dataPieces.erase(it->fd);
-            transferPipes.erase(it->fd);
-            brokenDescryptors.erase(it->fd);
-            it = pollDescryptors.erase(it);
+            transferPipes.erase(&*it);
+//            brokenDescryptors.erase(&*it);
+            it->fd = -it->fd;
         } else ++it;
     }
 }
 
-bool Forwarder::isAvailableDescryptor(int desc) {
+bool Forwarder::isAvailableDescryptor(int idDesc) {
     for (const auto &item : pollDescryptors) {
-        if (item.fd == desc)
+        if (item.fd == idDesc)
             return true;
     }
     return false;
