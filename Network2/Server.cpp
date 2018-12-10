@@ -84,11 +84,25 @@ void Server::printDownloadsInfo() {
 void Server::downloadFile(int clientSocket) {
 
     char  buffer [DOWNLOAD_BUFFER_SIZE] = {0};
-    if (!readOneMessage(buffer, clientSocket, "can't read file name!\n")) {
+    std::string str(buffer);
+
+    do {
+        readOneMessage(buffer, clientSocket, "Can't read meta info!");
+        str += buffer;
+    } while (str.size()==DOWNLOAD_BUFFER_SIZE);
+
+    unsigned long got = str.size();
+
+    send(clientSocket,std::to_string(str.size()).c_str(),DOWNLOAD_BUFFER_SIZE,0);
+    std::cout<< std::to_string(str.size()).c_str()<<std::endl;
+    readOneMessage(buffer,clientSocket,"Validation error!");
+
+    if (std::string(buffer)!="OK") {
+        std::cerr<<" error getting meta info"<<std::endl;
         return;
     }
 
-    std::string str(buffer);
+
     std::stringstream ss(str);
     std::string tmp;
     std::vector<std::string> protocolParams;

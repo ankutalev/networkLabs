@@ -43,6 +43,7 @@ void ReplicateCounter::startWorking() {
             continue;
         }
         auto fromIp = groupSocket.getIpAddr();
+
         if (replicatesInfo.find(fromIp) == replicatesInfo.end()) {
             std::cout << "Known replicas: " << std::endl;
             for (const auto& replica: replicatesInfo) {

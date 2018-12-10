@@ -22,11 +22,9 @@ public:
     ~Forwarder();
 
 private:
-    void registerDescryptorForPollRead(int desc, sockaddr_in *addr, bool isClient);
 
     void registerDescryptorForPollWrite(pollfd *desc);
 
-    void registerDescryptorForDeleteFromPoll(int desc);
 
     void readData(pollfd *from);
 
@@ -38,11 +36,9 @@ private:
 
     bool connectToTarget();
 
-    void unregDescryptorForReadFromPoll(int desc);
 
     void removeFromPoll();
 
-    bool isAvailableDescryptor(int desc);
 
     void reBase();
 
@@ -55,7 +51,6 @@ private:
     int targetPort = 80;
     int mySocket = -1;
     int targetSocket = -1;
-    unsigned int nextId = 0;
     sockaddr_in targetInfo;
     sockaddr_in forwarderInfo;
     std::string targetPath = "fit.ippolitov.me";

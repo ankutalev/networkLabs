@@ -50,13 +50,19 @@ int main(int argc , char *argv[]) {
     auto fileSize = std::to_string(st.st_size) + " " + "LOLKEK ";
     message = message + " " + fileSize;
     std::cout << message << std::endl;
+
     if (send(sock, message.c_str(), message.size(), 0) < 0) {
         std::cerr << "Send failed" << std::endl;
         return -1;
     }
 
     recv(sock, serverReply, SERVER_REPLY_BUFFER_SIZE, 0);
-    std::cout << serverReply << std::endl;
+
+    if (std::stoi(serverReply)==message.size())
+            send(sock,"OK",2, 0);
+    else
+            send(sock,"=(",2,0);
+    std::fill(serverReply,serverReply+SERVER_REPLY_BUFFER_SIZE,0);
 
     FILE* fin = fopen("heh.txt","r");
     size_t readed = SERVER_REPLY_BUFFER_SIZE;
