@@ -59,8 +59,8 @@ private:
     sockaddr_in targetInfo;
     sockaddr_in forwarderInfo;
     std::string targetPath = "fit.ippolitov.me";
-    std::vector<pollfd> pollDescryptors;
-    std::unordered_map<pollfd *, pollfd *> transferPipes;
-    std::unordered_map<pollfd *, std::vector<char> > dataPieces;
+    std::vector<pollfd> *pollDescryptors = new std::vector<pollfd>;
+    std::unordered_map<pollfd *, pollfd *> *transferPipes = new std::unordered_map<pollfd *, pollfd *>;
+    std::unordered_map<pollfd *, std::vector<char> > *dataPieces = new std::unordered_map<pollfd *, std::vector<char>>;
     std::set<pollfd *> brokenDescryptors;
 };
