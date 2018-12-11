@@ -49,8 +49,9 @@ Forwarder::Forwarder(int myPort, std::string_view targetName, int tPort) : targe
     pollfd me;
     me.fd = mySocket;
     me.events = POLLIN;
-    pollDescryptors->emplace_back(me);
     pollDescryptors->reserve(MAX_CLIENTS);
+    pollDescryptors->emplace_back(me);
+
 
     transferPipes->reserve(MAX_CLIENTS);
 
