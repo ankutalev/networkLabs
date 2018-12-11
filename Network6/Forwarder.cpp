@@ -3,6 +3,7 @@
 #include <netdb.h>
 #include <algorithm>
 #include <signal.h>
+
 void Forwarder::acceptConnection(int *connect) {
     sockaddr_in clientAddr;
     int size = sizeof(clientAddr);
@@ -49,7 +50,7 @@ Forwarder::Forwarder(int myPort, std::string_view targetName, int tPort) : targe
     pollDescryptors->emplace_back(me);
 
 
-    transferPipes->reserve(MAX_CLIENTS);
+    transferMap->reserve(MAX_CLIENTS);
 
     addrinfo hints = {0};
     hints.ai_flags = 0;
@@ -69,7 +70,7 @@ Forwarder::Forwarder(int myPort, std::string_view targetName, int tPort) : targe
 
 Forwarder::~Forwarder() {
     delete pollDescryptors;
-    delete transferPipes;
+    delete transferMap;
     delete dataPieces;
     close(mySocket);
 }
@@ -110,8 +111,8 @@ void Forwarder::pollManage() {
         pollDescryptors->push_back(c);
         c.fd = targetSocket;
         pollDescryptors->push_back(c);
-        (*transferPipes)[&*(pollDescryptors->end() - 1)] = &*(pollDescryptors->end() - 2);
-        (*transferPipes)[&*(pollDescryptors->end() - 2)] = &*(pollDescryptors->end() - 1);
+        (*transferMap)[&*(pollDescryptors->end() - 1)] = &*(pollDescryptors->end() - 2);
+        (*transferMap)[&*(pollDescryptors->end() - 2)] = &*(pollDescryptors->end() - 1);
     }
 
 
@@ -143,11 +144,11 @@ bool Forwarder::connectToTarget() {
 
 void Forwarder::readData(pollfd *idDesc) {
 
-    if (!transferPipes->count(idDesc)) {
+    if (!transferMap->count(idDesc)) {
         brokenDescryptors.insert(idDesc);
         return;
     }
-    pollfd *to = (*transferPipes)[idDesc];
+    pollfd* to = (*transferMap)[idDesc];
 
     while (1) {
         auto readed = recv(idDesc->fd, buff, BUFFER_SIZE - 1, 0);
@@ -228,7 +229,7 @@ void Forwarder::reBase() {
     }
 
 
-    for (auto it = transferPipes->begin(); it != transferPipes->end(); ++it) {
+    for (auto it = transferMap->begin(); it != transferMap->end(); ++it) {
         if (it->second->fd > 0 and it->first->fd > 0) {
             (*ntransferPipes)[oldNewMap[it->first]] = oldNewMap[it->second];
             (*ntransferPipes)[oldNewMap[it->second]] = oldNewMap[it->first];
@@ -247,8 +248,8 @@ void Forwarder::reBase() {
 
     delete dataPieces;
     dataPieces = ndataPieces;
-    delete transferPipes;
-    transferPipes = ntransferPipes;
+    delete transferMap;
+    transferMap = ntransferPipes;
     delete pollDescryptors;
     pollDescryptors = npollDescryptors;
     std::cout << "REBASED FINISHED with size " << pollDescryptors->size() << std::endl;
