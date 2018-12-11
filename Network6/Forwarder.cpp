@@ -2,7 +2,7 @@
 #include <unistd.h>
 #include <netdb.h>
 #include <algorithm>
-
+#include <signal.h>
 void Forwarder::acceptConnection(int *connect) {
     sockaddr_in clientAddr;
     int size = sizeof(clientAddr);
@@ -15,10 +15,6 @@ void Forwarder::acceptConnection(int *connect) {
         close(*connect);
         return;
     }
-
-
-    char info[100];
-    inet_ntop(AF_INET, &clientAddr, info, 100);
 }
 
 Forwarder::Forwarder(int myPort, std::string_view targetName, int tPort) : targetPath(targetName), port(myPort),
@@ -89,7 +85,7 @@ void Forwarder::pollManage() {
     pollfd c;
     c.fd = -1;
     c.events = POLLIN;
-
+    signal(SIGPIPE, SIG_IGN);
 
     poll(pollDescryptors->data(), pollDescryptors->size(), POLL_DELAY);
 
@@ -255,7 +251,8 @@ void Forwarder::reBase() {
     transferPipes = ntransferPipes;
     delete pollDescryptors;
     pollDescryptors = npollDescryptors;
-    std::cout << "REBASED FINISHED\n with size " << pollDescryptors->size() << std::endl;
+    std::cout << "REBASED FINISHED with size " << pollDescryptors->size() << std::endl;
+    std::cout << "DATA SIZE " << dataPieces->size() << std::endl;
 
 }
 
