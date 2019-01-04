@@ -36,23 +36,18 @@ private:
 
     bool connectToTarget();
 
-
     void removeFromPoll();
-
 
     void reBase();
 
 private:
 
     static const int MAX_CLIENTS = 1024;
-
     static const int POLL_DELAY = 5000;
     static const int BUFFER_SIZE = 1500;
     char buff[BUFFER_SIZE];
-
     int port = 8080;
     int targetPort = 80;
-
     int mySocket = -1;
     int targetSocket = -1;
 
