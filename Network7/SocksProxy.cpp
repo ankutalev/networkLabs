@@ -11,22 +11,19 @@
 #include <errno.h>
 #include <sys/time.h>
 #include <signal.h>
+#include <exception>
 #include "SocksProxy.h"
-
-
 
 
 static void removeFromPoll(std::vector<pollfd>::iterator* it) {
     if (close((*it)->fd)) {
-        std::cout << it << std::endl;
-        std::cout << (*it)->fd << std::endl;
         perror("close");
     }
     (*it)->fd = -(*it)->fd;
 }
 
 
-void CacheProxy::passIdentification(std::vector<pollfd>::iterator* clientIterator) {
+void SocksProxy::passIdentification(std::vector<pollfd>::iterator* clientIterator) {
     pollfd* client = &**clientIterator;
     std::fill(buffer, buffer + BUFFER_LENGTH, 0);
     auto readed = recv(client->fd, buffer, BUFFER_LENGTH, 0);
@@ -37,57 +34,29 @@ void CacheProxy::passIdentification(std::vector<pollfd>::iterator* clientIterato
         removeFromPoll(clientIterator);
         return;
     }
-
-    char socksVersion = buffer[0];
-    char socksCommand = buffer[1];
     char addrType = buffer[3];
-
-    sockaddr_in targetAddr;
-    socklen_t addrSize = sizeof(targetAddr);
-    targetAddr.sin_family = AF_INET;
-    targetAddr.sin_port = constructPort(buffer + 8);
-    targetAddr.sin_addr.s_addr = constructIpAddr(buffer + 4);
-    std::cout << "target port " << targetAddr.sin_port << std::endl;
-    std::cout << "target addr " << inet_ntoa(targetAddr.sin_addr) << std::endl;
-    char response[] = {SOCKS_VERSION, SOCKS_SUCCESS, 0, IPv4_ADDRESS, 0, 0, 0, 0, 0, 0};
-    auto target = socket(AF_INET, SOCK_STREAM, 0);
-    if (target == -1) {
-        std::cout << "INVALID IP ADDR OR PORT GET!" << std::endl;
-        response[1] = SOCKS_SERVER_ERROR;
-        send(client->fd, response, sizeof(response), 0);
-        passedHandshake.erase(client);
-        removeFromPoll(clientIterator);
-        return;
+    switch (addrType) {
+        case IPv4_ADDRESS:
+            connectToIPv4Address(clientIterator);
+            return;
+        case IPv6_ADDRESS:
+            connectToIPv6Address(clientIterator);
+            return;
+        case DOMAIN_NAME:
+            resolveDomainName(clientIterator);
+            return;
+        default:
+            throw std::logic_error("Invalid addrType passed through SOCKS checks, something REALLY BAD was happened");
     }
-    fcntl(target, F_SETFL, fcntl(target, F_GETFL, 0) | O_NONBLOCK);
-    if (connect(target, (sockaddr*) &targetAddr, addrSize) and errno != EINPROGRESS) {
-        response[1] = HOST_NOT_REACHABLE;
-        send(client->fd, response, sizeof(response), 0);
-        passedHandshake.erase(client);
-        removeFromPoll(clientIterator);
-        return;
-    }
-    std::cout << "ya zaconnectilsya!" << std::endl;
-    send(client->fd, response, sizeof(response), 0);
-    pollfd fd;
-    fd.fd = target;
-    fd.events = POLLIN;
-    fd.revents = 0;
-    *clientIterator = pollDescryptors->insert(*clientIterator + 1, fd);
-    passedHandshake.erase(client);
-    passedFullSOCKSprotocol.insert(client);
-    passedFullSOCKSprotocol.insert(&**clientIterator);
-    (*transferMap)[client] = &**clientIterator;
-    (*transferMap)[&**clientIterator] = client;
 }
 
-void CacheProxy::makeHandshake(std::vector<pollfd>::iterator* clientIterator) {
+void SocksProxy::makeHandshake(std::vector<pollfd>::iterator* clientIterator) {
     pollfd* fd = &**clientIterator;
     auto readed = recv(fd->fd, buffer, BUFFER_LENGTH, 0);
     std::cout << "I READ IN HANDSHAKE" << readed << std::endl;
     buffer[readed] = 0;
 //    printSocksBuffer(readed);f
-
+//    std::cout << buffer << std::endl;
     char response[2] = {SOCKS_VERSION, INVALID_AUTHORISATION};
     if (buffer[0] != SOCKS_VERSION) {
         send(fd->fd, response, HANDSHAKE_LENGTH, 0);
@@ -111,8 +80,7 @@ void CacheProxy::makeHandshake(std::vector<pollfd>::iterator* clientIterator) {
     passedHandshake.insert(fd);
 }
 
-
-void CacheProxy::acceptConnection(pollfd* client) {
+void SocksProxy::acceptConnection(pollfd* client) {
     size_t addSize = sizeof(addr);
     int newClient = accept(serverSocket, (sockaddr*) &addr, (socklen_t*) &addSize);
 
@@ -127,7 +95,7 @@ void CacheProxy::acceptConnection(pollfd* client) {
     client->fd = newClient;
 }
 
-void CacheProxy::sendData(std::vector<pollfd>::iterator* clientIterator) {
+void SocksProxy::sendData(std::vector<pollfd>::iterator* clientIterator) {
     std::cout << " send data!" << std::endl;
 
     auto client = &**clientIterator;
@@ -146,21 +114,21 @@ void CacheProxy::sendData(std::vector<pollfd>::iterator* clientIterator) {
     }
 }
 
-CacheProxy::CacheProxy() {
+SocksProxy::SocksProxy() {
     init(DEFAULT_PORT);
 }
 
-CacheProxy::CacheProxy(int port) : port(port) {
+SocksProxy::SocksProxy(int port) : port(port) {
     init(port);
 }
 
-void CacheProxy::startWorking() {
+void SocksProxy::startWorking() {
     while (1)
         pollManage();
 }
 
 
-void CacheProxy::pollManage() {
+void SocksProxy::pollManage() {
     pollfd c;
     c.fd = -1;
     c.events = POLLIN;
@@ -200,25 +168,24 @@ void CacheProxy::pollManage() {
 
     if (c.fd != -1) {
         pollDescryptors->push_back(c);
-        auto fd = &*(pollDescryptors->end() - 1);
     }
 
     removeDeadDescryptors();
 }
 
-CacheProxy::~CacheProxy() {
+SocksProxy::~SocksProxy() {
     close(serverSocket);
     delete this->transferMap;
     delete this->pollDescryptors;
 }
 
-void CacheProxy::removeDeadDescryptors() {
+void SocksProxy::removeDeadDescryptors() {
     auto npollDescryptors = new std::vector<pollfd>;
     npollDescryptors->reserve(MAXIMIUM_CLIENTS);
 
-    auto ntransferPipes = new std::map<pollfd*, pollfd*>;
-    auto ndataPieces = new std::map<pollfd*, std::vector<char> >;
-    std::map<pollfd*, pollfd*> oldNewMap;
+    auto ntransferPipes = new std::unordered_map<pollfd*, pollfd*>;
+    auto ndataPieces = new std::unordered_map<pollfd*, std::vector<char> >;
+    std::unordered_map<pollfd*, pollfd*> oldNewMap;
 
     std::unordered_set<pollfd*> newPassedHandshake;
     std::unordered_set<pollfd*> newPassedSocks;
@@ -230,7 +197,6 @@ void CacheProxy::removeDeadDescryptors() {
             oldNewMap[&pollDescryptor] = &npollDescryptors->back();
         }
     }
-
 
 
     for (auto &it : *transferMap) {
@@ -257,7 +223,6 @@ void CacheProxy::removeDeadDescryptors() {
     }
 
 
-
     dataPieces->swap(*ndataPieces);
     delete ndataPieces;
 
@@ -271,13 +236,13 @@ void CacheProxy::removeDeadDescryptors() {
     passedHandshake.swap(newPassedHandshake);
 }
 
-void CacheProxy::init(int port) {
+void SocksProxy::init(int port) {
 
     signal(SIGPIPE, SIG_IGN);
     serverSocket = socket(AF_INET, SOCK_STREAM, 0);
     pollDescryptors = new std::vector<pollfd>;
-    transferMap = new std::map<pollfd*, pollfd*>;
-    dataPieces = new std::map<pollfd*, std::vector<char> >;
+    transferMap = new std::unordered_map<pollfd*, pollfd*>;
+    dataPieces = new std::unordered_map<pollfd*, std::vector<char> >;
 
 
     int opt = 1;
@@ -307,15 +272,19 @@ void CacheProxy::init(int port) {
     pollDescryptors->reserve(MAXIMIUM_CLIENTS);
     pollDescryptors->push_back(me);
 
+    supportedAddressTypes.insert(IPv4_ADDRESS);
+    supportedAddressTypes.insert(IPv6_ADDRESS);
+    supportedAddressTypes.insert(DOMAIN_NAME);
+
 }
 
-void CacheProxy::printSocksBuffer(int size) {
+void SocksProxy::printSocksBuffer(int size) {
     for (int i = 0; i < size; ++i) {
         std::cout << i << " " << (int) buffer[i] << std::endl;
     }
 }
 
-bool CacheProxy::checkSOCKSRequest(int client, ssize_t len) {
+bool SocksProxy::checkSOCKSRequest(int client, ssize_t len) {
     if (len < MINIMUM_SOCKS_REQUEST_LENGTH) {
         char notSupported[] = {SOCKS_VERSION, PROTOCOL_ERROR, 0};
         send(client, notSupported, sizeof(notSupported), 0);
@@ -332,7 +301,7 @@ bool CacheProxy::checkSOCKSRequest(int client, ssize_t len) {
         std::cerr << "invalid socks request!" << std::endl;
         return false;
     }
-    if (addrType != IPv4_ADDRESS) {
+    if (not supportedAddressTypes.count(addrType)) {
         char notSupported[] = {SOCKS_VERSION, ADDRESS_NOT_SUPPORTED, 0};
         send(client, notSupported, sizeof(notSupported), 0);
         return false;
@@ -346,18 +315,22 @@ bool CacheProxy::checkSOCKSRequest(int client, ssize_t len) {
     return true;
 }
 
-uint16_t CacheProxy::constructPort(char* port) {
+uint16_t SocksProxy::constructPort(char* port) {
     return *reinterpret_cast<uint16_t*>(port);
 }
 
-uint32_t CacheProxy::constructIpAddr(char* port) {
+uint32_t SocksProxy::constructIPv4Addr(char* port) {
     return *reinterpret_cast<uint32_t*>(port);
 }
 
-void CacheProxy::readData(std::vector<pollfd>::iterator* clientIterator) {
+in6_addr SocksProxy::constructIPv6Addr(char* addr) {
+    return *reinterpret_cast<in6_addr*>(addr);
+}
+
+void SocksProxy::readData(std::vector<pollfd>::iterator* clientIterator) {
 
     auto client = &**clientIterator;
-    std::cout << "READ DATA" << std::endl;
+//    std::cout << "READ DATA" << std::endl;
 
     if (!transferMap->count(client)) {
         removeFromPoll(clientIterator);
@@ -367,9 +340,10 @@ void CacheProxy::readData(std::vector<pollfd>::iterator* clientIterator) {
 
     while (1) {
         auto readed = recv(client->fd, buffer, BUFFER_LENGTH - 1, 0);
-        std::cout << "i read " << readed << std::endl;
+//        std::cout << "i read " << readed << std::endl;
+//        std::cout << buffer << std::endl;
         if (!readed or (readed == -1 and errno != EWOULDBLOCK)) {
-            std::cout << "UJOHU!!!!!" << std::endl;
+//            std::cout << "UJOHU!!!!!" << std::endl;
             registerForWrite(to);
             removeFromPoll(clientIterator);
             return;
@@ -385,5 +359,99 @@ void CacheProxy::readData(std::vector<pollfd>::iterator* clientIterator) {
         }
     }
 }
+
+void SocksProxy::connectToIPv4Address(std::vector<pollfd>::iterator* clientIterator) {
+    auto client = &**clientIterator;
+    sockaddr_in targetAddr;
+    socklen_t addrSize = sizeof(targetAddr);
+    targetAddr.sin_family = AF_INET;
+    targetAddr.sin_port = constructPort(buffer + SOCKS5_OFFSET_BEFORE_ADDR + IPv4_ADDRESS_LENGTH);
+    targetAddr.sin_addr.s_addr = constructIPv4Addr(buffer + SOCKS5_OFFSET_BEFORE_ADDR);
+    char response[] = {SOCKS_VERSION, SOCKS_SUCCESS, 0, IPv4_ADDRESS, 0, 0, 0, 0, 0, 0};
+    auto target = socket(AF_INET, SOCK_STREAM, 0);
+    if (target == -1) {
+        std::cerr << "INVALID IP ADDR OR PORT GET!" << std::endl;
+        response[1] = SOCKS_SERVER_ERROR;
+        send(client->fd, response, sizeof(response), 0);
+        passedHandshake.erase(client);
+        removeFromPoll(clientIterator);
+        return;
+    }
+    fcntl(target, F_SETFL, fcntl(target, F_GETFL, 0) | O_NONBLOCK);
+    if (connect(target, (sockaddr*) &targetAddr, addrSize) and errno != EINPROGRESS) {
+        response[1] = HOST_NOT_REACHABLE;
+        send(client->fd, response, sizeof(response), 0);
+        passedHandshake.erase(client);
+        removeFromPoll(clientIterator);
+        return;
+    }
+    send(client->fd, response, sizeof(response), 0);
+    pollfd fd;
+    fd.fd = target;
+    fd.events = POLLIN;
+    fd.revents = 0;
+    *clientIterator = pollDescryptors->insert(*clientIterator + 1, fd);
+    passedHandshake.erase(client);
+    passedFullSOCKSprotocol.insert(client);
+    passedFullSOCKSprotocol.insert(&**clientIterator);
+    (*transferMap)[client] = &**clientIterator;
+    (*transferMap)[&**clientIterator] = client;
+}
+
+void SocksProxy::connectToIPv6Address(std::vector<pollfd>::iterator* clientIterator) {
+    std::cout << " IPV6 connection!!" << std::endl;
+    auto client = &**clientIterator;
+    sockaddr_in6 targetAddr;
+    socklen_t addrSize = sizeof(targetAddr);
+    targetAddr.sin6_family = AF_INET6;
+    targetAddr.sin6_flowinfo = 0;
+    targetAddr.sin6_scope_id = 0;
+    targetAddr.sin6_port = constructPort(buffer + SOCKS5_OFFSET_BEFORE_ADDR + IPv6_ADDRESS_LENGTH);
+    targetAddr.sin6_addr = constructIPv6Addr(buffer + SOCKS5_OFFSET_BEFORE_ADDR);
+    char response[] = {SOCKS_VERSION, SOCKS_SUCCESS, 0, IPv6_ADDRESS, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                       0};
+    auto target = socket(AF_INET6, SOCK_STREAM, 0);
+    if (target == -1) {
+        std::cerr << "INVALID IP ADDR OR PORT GET!" << std::endl;
+        response[1] = SOCKS_SERVER_ERROR;
+        send(client->fd, response, sizeof(response), 0);
+        passedHandshake.erase(client);
+        removeFromPoll(clientIterator);
+        return;
+    }
+    char buff[IPv6_ADDRESS_LENGTH];
+    inet_ntop(AF_INET6, (void*) &targetAddr.sin6_addr, buff, addrSize);
+    std::cout << "TO " << buff << " PORT " << htons(targetAddr.sin6_port) << std::endl;
+    fcntl(target, F_SETFL, fcntl(target, F_GETFL, 0) | O_NONBLOCK);
+    if (connect(target, (sockaddr*) &targetAddr, addrSize) and errno != EINPROGRESS) {
+        response[1] = HOST_NOT_REACHABLE;
+        send(client->fd, response, sizeof(response), 0);
+        passedHandshake.erase(client);
+        removeFromPoll(clientIterator);
+        return;
+    }
+    send(client->fd, response, sizeof(response), 0);
+    std::cout << "SUCCESSFULL IPV6 !!" << std::endl;
+    pollfd fd;
+    fd.fd = target;
+    fd.events = POLLIN;
+    fd.revents = 0;
+    *clientIterator = pollDescryptors->insert(*clientIterator + 1, fd);
+    passedHandshake.erase(client);
+    passedFullSOCKSprotocol.insert(client);
+    passedFullSOCKSprotocol.insert(&**clientIterator);
+    (*transferMap)[client] = &**clientIterator;
+    (*transferMap)[&**clientIterator] = client;
+}
+
+void SocksProxy::resolveDomainName(std::vector<pollfd>::iterator* clientIterator) {
+
+}
+
+void SocksProxy::getResolveResult(std::vector<pollfd>::iterator* clientIterator) {
+
+}
+
+
 
 
