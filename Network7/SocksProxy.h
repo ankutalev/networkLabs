@@ -1,8 +1,8 @@
 #pragma once
 
 #include <netinet/in.h>
+#include <netdb.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
 #include <vector>
 #include <poll.h>
@@ -10,6 +10,11 @@
 #include <unordered_map>
 #include <unordered_set>
 
+struct ResolverStructure {
+    uint16_t port;
+    gaicb* host;
+    pollfd* waited;
+};
 
 class SocksProxy {
 public:
@@ -27,6 +32,8 @@ private:
     void removeDeadDescryptors();
 
     void init(int port);
+
+    void setupDnsSignal();
 
     void connectToIPv4Address(std::vector<pollfd>::iterator* clientIterator);
 
@@ -62,6 +69,7 @@ private:
 private:
     int port;
     int serverSocket;
+    int dnsSignal;
     const static int MAXIMIUM_CLIENTS = 2048;
     const static int DEFAULT_PORT = 8080;
     const static int POLL_DELAY = 3000;
@@ -93,7 +101,7 @@ private:
     std::unordered_set<pollfd*> passedFullSOCKSprotocol;
     std::unordered_map<pollfd*, pollfd*>* transferMap;
     std::unordered_map<pollfd*, std::vector<char> >* dataPieces;
-    std::unordered_map<pollfd*, pollfd*> waitedForDnsToResolvers;
+    int waitedCounter = 0;
 };
 
 

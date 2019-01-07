@@ -1,4 +1,5 @@
 #include <iostream>
+#include <signal.h>
 #include "SocksProxy.h"
 
 int main(int argc, char* argv[]) {
